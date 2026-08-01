@@ -6974,7 +6974,10 @@ local noclipConnection = nil
 local noclipParts = {}
 
 addcmd("noclip", {}, function(args, speaker)
-    if noclipConnection ~= nil then noclipConnection:Disconnect() end
+    if noclipConnection ~= nil then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
     for part in noclipParts do
         part.CanCollide = true
     end
@@ -6998,7 +7001,10 @@ addcmd("noclip", {}, function(args, speaker)
 end)
 
 addcmd("unnoclip", {"clip"}, function(args, speaker)
-    if noclipConnection ~= nil then noclipConnection:Disconnect() end
+    if noclipConnection ~= nil then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
     for part in noclipParts do
         part.CanCollide = true
     end
