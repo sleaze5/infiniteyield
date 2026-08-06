@@ -40,7 +40,7 @@ hookfunction = missing("function", hookfunction)
 hookmetamethod = missing("function", hookmetamethod)
 getnamecallmethod = missing("function", getnamecallmethod or get_namecall_method)
 checkcaller = missing("function", checkcaller, function() return false end)
-newcclosure = missing("function", newcclosure)
+newcclosure = missing("function", newcclosure, function(f, ...) return f(...) end)
 getgc = missing("function", getgc or get_gc_objects)
 setthreadidentity = missing("function", setthreadidentity or (syn and syn.set_thread_identity) or syn_context_set or setthreadcontext)
 replicatesignal = missing("function", replicatesignal)
@@ -4330,6 +4330,16 @@ end
 
 local canvasPos = Vector2.new(0,0)
 local topCommand = nil
+local function updateCommandCanvasSize(frame)
+	local scale = (Scale and Scale.Scale) or 1
+	if scale <= 0 then scale = 1 end
+	local contentY = cmdListLayout.AbsoluteContentSize.Y
+	local unscaledY = math.ceil(contentY / scale)
+	frame.CanvasSize = UDim2.new(0, 0, 0, math.max(0, unscaledY))
+end
+cmdListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	updateCommandCanvasSize(CMDsF)
+end)
 IndexContents = function(str,bool,cmdbar,Ianim)
 	CMDsF.CanvasPosition = Vector2.new(0,0)
 	local SizeY = 0
@@ -4363,7 +4373,7 @@ IndexContents = function(str,bool,cmdbar,Ianim)
 			end
 		end
 	end
-	frame.CanvasSize = UDim2.new(0,0,0,cmdListLayout.AbsoluteContentSize.Y)
+	updateCommandCanvasSize(frame)
 	if not Ianim then
 		if indexnum == 0 or string.find(str, " ") then
 			if not cmdbar then
@@ -4473,7 +4483,7 @@ CMDs[#CMDs + 1] = {NAME = 'audiologger / alogger', DESC = 'Opens Edges audio log
 CMDs[#CMDs + 1] = {NAME = 'serverinfo / info', DESC = 'Gives you info about the server'}
 CMDs[#CMDs + 1] = {NAME = 'jobid', DESC = 'Copies the games JobId to your clipboard'}
 CMDs[#CMDs + 1] = {NAME = 'notifyjobid', DESC = 'Notifies you the games JobId'}
-CMDs[#CMDs + 1] = {NAME = 'rejoin / rj', DESC = 'Makes you rejoin the game'}
+CMDs[#CMDs + 1] = {NAME = 'rejoin / rj [reposition]', DESC = 'Makes you rejoin the game'}
 CMDs[#CMDs + 1] = {NAME = 'inviteprompt', DESC = 'Prompts the user of your choice that they had invited you. Requires a rejoin to function.'}
 CMDs[#CMDs + 1] = {NAME = 'autorejoin / autorj', DESC = 'Automatically rejoins the server if you get kicked/disconnected'}
 CMDs[#CMDs + 1] = {NAME = 'serverhop / shop', DESC = 'Teleports you to a different server'}
@@ -4506,7 +4516,7 @@ CMDs[#CMDs + 1] = {NAME = 'antigameplaypaused', DESC = 'Clears the annoying box 
 CMDs[#CMDs + 1] = {NAME = 'unantigameplaypaused', DESC = 'Disables antigameplaypaused'}
 CMDs[#CMDs + 1] = {NAME = 'clientantikick / antikick (CLIENT)', DESC = 'Prevents localscripts from kicking you'}
 CMDs[#CMDs + 1] = {NAME = 'clientantiteleport / antiteleport (CLIENT)', DESC = 'Prevents localscripts from teleporting you'}
-CMDs[#CMDs + 1] = {NAME = 'allowrejoin / allowrj [true/false] (CLIENT)', DESC = 'Changes if antiteleport allows you to rejoin or not'}
+CMDs[#CMDs + 1] = {NAME = 'allowrejoin / allowrj (CLIENT)', DESC = 'Toggles if antiteleport allows you to rejoin or not'}
 CMDs[#CMDs + 1] = {NAME = 'cancelteleport / canceltp', DESC = 'Cancels teleports in progress'}
 CMDs[#CMDs + 1] = {NAME = 'volume / vol [0-10]', DESC = 'Adjusts your game volume on a scale of 0 to 10'}
 CMDs[#CMDs + 1] = {NAME = 'antilag / boostfps / lowgraphics', DESC = 'Lowers game quality to boost FPS'}
@@ -4524,7 +4534,7 @@ CMDs[#CMDs + 1] = {NAME = 'alignmentkeys', DESC = 'Enables the left and right al
 CMDs[#CMDs + 1] = {NAME = 'unalignmentkeys / noalignmentkeys', DESC = 'Disables the alignment keys'}
 CMDs[#CMDs + 1] = {NAME = 'ctrllock', DESC = 'Binds Shiftlock to LeftControl'}
 CMDs[#CMDs + 1] = {NAME = 'unctrllock', DESC = 'Re-binds Shiftlock to LeftShift'}
-CMDs[#CMDs + 1] = {NAME = 'exit', DESC = 'Kills roblox process'}
+CMDs[#CMDs + 1] = {NAME = 'exit / shutdown / leave', DESC = 'Exits the game'}
 CMDs[#CMDs + 1] = {NAME = 'removecmd / deletecmd', DESC = 'Removes a command until the script is reloaded'}
 CMDs[#CMDs + 1] = {NAME = 'breakloops / break (cmd loops)', DESC = 'Stops any cmd loops (;100^1^cmd)'}
 CMDs[#CMDs + 1] = {NAME = '', DESC = ''}
@@ -4979,14 +4989,17 @@ function respawn(plr)
 	if invisRunning then TurnVisible() end
     local char = plr.Character
     local hum = char:FindFirstChildWhichIsA("Humanoid")
-    if hum then hum:ChangeState(Enum.HumanoidStateType.Dead) end
-    char:ClearAllChildren()
-    local newChar = Instance.new("Model")
-    newChar.Parent = workspace
-    plr.Character = newChar
-    task.wait()
-    plr.Character = char
-    newChar:Destroy()
+	local archive = workspace.FallenPartsDestroyHeight
+	local camType = workspace.CurrentCamera.CameraType
+	workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
+	workspace.FallenPartsDestroyHeight = 0/0
+    getRoot(char).Position = Vector3.yAxis * archive
+	task.wait(plr:GetNetworkPing())
+	workspace.FallenPartsDestroyHeight = archive
+	repeat task.wait() until not char.Parent or not hum.Parent or (hum and hum.Health <= 0)
+	if hum then
+		hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true)
+	end
 end
 
 local refreshCmd = false
@@ -5029,7 +5042,7 @@ Clip = true
 spDelay = 0.1
 Players.LocalPlayer.CharacterAdded:Connect(function()
 	NOFLY()
-	Floating = false
+	floating = false
 
 	if not Clip then
 		execCmd('clip')
@@ -6930,14 +6943,46 @@ addcmd('gametp',{'gameteleport'},function(args, speaker)
 	TeleportService:Teleport(args[1])
 end)
 
+teleportRespawnHandler = [[
+local ok, data = pcall(function() return game:GetService("TeleportService"):GetLocalPlayerTeleportData() end)
+if ok and typeof(data) == "CFrame" then
+    local Players = game:GetService("Players")
+    local ME = Players.LocalPlayer
+    while not ME do
+        Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+        ME = Players.LocalPlayer
+    end
+
+    local Character = ME.Character or ME.CharacterAdded:Wait()
+    Character:WaitForChild("HumanoidRootPart")
+
+    local t = tick()
+    while (tick() - t) <= 0.3 do
+        Character:PivotTo(data)
+        task.wait()
+    end
+end
+]]
 addcmd("rejoin", {"rj"}, function(args, speaker)
-	if #Players:GetPlayers() <= 1 then
-		Players.LocalPlayer:Kick("\nRejoining...")
-		wait()
-		TeleportService:Teleport(PlaceId, Players.LocalPlayer)
-	else
-		TeleportService:TeleportToPlaceInstance(PlaceId, JobId, Players.LocalPlayer)
-	end
+    local data = nil
+    if parseBoolean(args[1], false) == true then
+        if queueteleport then
+            if speaker.Character then
+                data = speaker.Character:GetPivot()
+                queueteleport(teleportRespawnHandler)
+            end
+        else
+            notify("Incompatible Exploit", "Your exploit does not support this argument (missing queue_on_teleport)")
+        end
+    end
+
+    if #Players:GetPlayers() <= 1 then
+        Players.LocalPlayer:Kick("\nRejoining...")
+        task.wait(0.3)
+        TeleportService:Teleport(PlaceId, Players.LocalPlayer, data)
+    else
+        TeleportService:TeleportToPlaceInstance(PlaceId, JobId, Players.LocalPlayer, nil, data)
+    end
 end)
 
 addcmd("inviteprompt", {}, function(args, speaker)
@@ -6979,7 +7024,7 @@ addcmd("serverhop", {"shop"}, function(args, speaker)
 	end
 end)
 
-addcmd("exit", {}, function(args, speaker)
+addcmd("exit", {"shutdown", "leave"}, function(args, speaker)
 	game:Shutdown()
 end)
 
@@ -7340,88 +7385,92 @@ addcmd('cframeflyspeed',{'cflyspeed'},function(args, speaker)
 	end
 end)
 
-Floating = false
-floatName = randomString()
+floating = false
+local beganListener: RBXScriptConnection
+local endListener: RBXScriptConnection
+local floatingFunc: RBXScriptConnection
+
 addcmd('float', {'platform'},function(args, speaker)
-	Floating = true
 	local pchar = speaker.Character
+	floatName = randomString()
+	floating = true
+	
 	if pchar and not pchar:FindFirstChild(floatName) then
 		task.spawn(function()
-			local Float = Instance.new('Part')
-			Float.Name = floatName
-			Float.Parent = pchar
-			Float.Transparency = 1
-			Float.Size = Vector3.new(2,0.2,1.5)
-			Float.Anchored = true
-			local FloatValue = -3.1
-			Float.CFrame = getRoot(pchar).CFrame * CFrame.new(0,FloatValue,0)
-			notify('Float','Float Enabled (Q = down & E = up)')
-			qUp = IYMouse.KeyUp:Connect(function(KEY)
-				if KEY == 'q' then
-					FloatValue = FloatValue + 0.5
+			local floatPoint = -3.1
+			local floatPart = Instance.new('Part')
+			floatPart.Name = floatName
+			floatPart.Parent = pchar
+			floatPart.Transparency = 1
+			floatPart.Size = Vector3.new(2, 0.2, 1.5)
+			floatPart.Anchored = true
+			
+			notify('Float', 'Started floating (Q = down & E = up)')
+			
+			beganListener = UserInputService.InputBegan:Connect(function(key, processed)
+				if processed then return end
+
+				if key.KeyCode == Enum.KeyCode.Q then
+					floatPoint -= 0.5
+				end
+				if key.KeyCode == Enum.KeyCode.E then
+					floatPoint += 1.5
 				end
 			end)
-			eUp = IYMouse.KeyUp:Connect(function(KEY)
-				if KEY == 'e' then
-					FloatValue = FloatValue - 1.5
+			endListener = UserInputService.InputEnded:Connect(function(key, processed)
+				if processed then return end
+
+				if key.KeyCode == Enum.KeyCode.Q then
+					floatPoint += 0.5
+				end
+				if key.KeyCode == Enum.KeyCode.E then
+					floatPoint -= 1.5
 				end
 			end)
-			qDown = IYMouse.KeyDown:Connect(function(KEY)
-				if KEY == 'q' then
-					FloatValue = FloatValue - 0.5
-				end
-			end)
-			eDown = IYMouse.KeyDown:Connect(function(KEY)
-				if KEY == 'e' then
-					FloatValue = FloatValue + 1.5
-				end
-			end)
+			
 			floatDied = speaker.Character:FindFirstChildOfClass('Humanoid').Died:Connect(function()
-				FloatingFunc:Disconnect()
-				Float:Destroy()
-				qUp:Disconnect()
-				eUp:Disconnect()
-				qDown:Disconnect()
-				eDown:Disconnect()
+				floatingFunc:Disconnect()
+				floatPart:Destroy()
 				floatDied:Disconnect()
+				beganListener:Disconnect()
+				endListener:Disconnect()
+				floatName = nil
 			end)
-			local function FloatPadLoop()
+			local function floatPadLoop()
 				if pchar:FindFirstChild(floatName) and getRoot(pchar) then
-					Float.CFrame = getRoot(pchar).CFrame * CFrame.new(0,FloatValue,0)
+					floatPart.CFrame = getRoot(pchar).CFrame * CFrame.new(0, floatPoint, 0)
 				else
-					FloatingFunc:Disconnect()
-					Float:Destroy()
-					qUp:Disconnect()
-					eUp:Disconnect()
-					qDown:Disconnect()
-					eDown:Disconnect()
+					floatingFunc:Disconnect()
+					floatPart:Destroy()
 					floatDied:Disconnect()
+					beganListener:Disconnect()
+					endListener:Disconnect()
+					floatName = nil
 				end
 			end			
-			FloatingFunc = RunService.Heartbeat:Connect(FloatPadLoop)
+			floatingFunc = RunService.PreAnimation:Connect(floatPadLoop)
 		end)
 	end
 end)
 
 addcmd('unfloat',{'nofloat','unplatform','noplatform'},function(args, speaker)
-	Floating = false
+	floating = false
 	local pchar = speaker.Character
-	notify('Float','Float Disabled')
+	notify('Float', 'Stopped floating')
 	if pchar:FindFirstChild(floatName) then
 		pchar:FindFirstChild(floatName):Destroy()
 	end
 	if floatDied then
-		FloatingFunc:Disconnect()
-		qUp:Disconnect()
-		eUp:Disconnect()
-		qDown:Disconnect()
-		eDown:Disconnect()
+		floatingFunc:Disconnect()
 		floatDied:Disconnect()
+		beganListener:Disconnect()
+		endListener:Disconnect()
+		floatName = nil
 	end
 end)
 
 addcmd('togglefloat',{},function(args, speaker)
-	if Floating then
+	if floating then
 		execCmd('unfloat')
 	else
 		execCmd('float')
@@ -7881,24 +7930,19 @@ addcmd('clientantikick',{'antikick'},function(args, speaker)
 		return notify('Incompatible Exploit','Your exploit does not support this command (missing hookmetamethod)')
 	end
 	local LocalPlayer = Players.LocalPlayer
-	local oldhmmi
-	local oldhmmnc
-	local oldKickFunction
-	if hookfunction then
-		oldKickFunction = hookfunction(LocalPlayer.Kick, function() end)
-	end
-	oldhmmi = hookmetamethod(game, "__index", function(self, method)
-		if self == LocalPlayer and method:lower() == "kick" then
-			return error("Expected ':' not '.' calling member function Kick", 2)
-		end
-		return oldhmmi(self, method)
-	end)
-	oldhmmnc = hookmetamethod(game, "__namecall", function(self, ...)
-		if self == LocalPlayer and getnamecallmethod():lower() == "kick" then
-			return
-		end
-		return oldhmmnc(self, ...)
-	end)
+	local oldNamecall; oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+    	local method = getnamecallmethod and getnamecallmethod() or ""
+    	if select(1, ...) == LocalPlayer and method == "Kick" or method == "kick" then
+        	return nil
+    	end
+    	return oldNamecall(...)
+	end))
+	hookfunction(LocalPlayer.Kick, newcclosure(function(self, _)
+    	if self ~= lp then
+        	error("Expected ':' not '.' calling member function Kick", 2)
+    	end
+    	return nil
+	end))
 
 	notify('Client Antikick','Client anti kick is now active (only effective on localscript kick)')
 end)
@@ -7908,37 +7952,57 @@ addcmd('clientantiteleport',{'antiteleport'},function(args, speaker)
 	if not hookmetamethod then 
 		return notify('Incompatible Exploit','Your exploit does not support this command (missing hookmetamethod)')
 	end
-	local TeleportService = TeleportService
-	local oldhmmi
-	local oldhmmnc
-	oldhmmi = hookmetamethod(game, "__index", function(self, method)
-		if self == TeleportService then
-			if method:lower() == "teleport" then
-				return error("Expected ':' not '.' calling member function Kick", 2)
-			elseif method == "TeleportToPlaceInstance" then
-				return error("Expected ':' not '.' calling member function TeleportToPlaceInstance", 2)
-			end
+
+	local oldTp; oldTp = hookfunction(TeleportService.Teleport, newcclosure(function(self, placeId, player, _teleportData, customLoadingScreen)
+		if checkcaller() or (allow_rj and placeId == game.PlaceId) then
+			return oldTp(self, placeId, player, _teleportData, customLoadingScreen)
 		end
-		return oldhmmi(self, method)
-	end)
-	oldhmmnc = hookmetamethod(game, "__namecall", function(self, ...)
-		if self == TeleportService and getnamecallmethod():lower() == "teleport" or getnamecallmethod() == "TeleportToPlaceInstance" then
+		if self ~= TeleportService then
+			error("Expected ':' not '.' calling member function Teleport", 2)
+		end
+		if placeId == nil then
+			error("Argument 1 missing or nil", 2)
+		end
+		if typeof(placeId) ~= "number" and placeId ~= true then
+			error(`Unable to cast {typeof(placeId)} to int64`, 2)
+		elseif placeId == true then
+			-- somehow raise raiseTeleportInitFailedEvent
 			return
 		end
-		return oldhmmnc(self, ...)
-	end)
+		if typeof(customLoadingScreen) ~= "Instance" and customLoadingScreen ~= nil then
+			error("Unable to cast value to Object", 2)
+		end
+		return nil
+	end))
+	hookfunction(TeleportService.TeleportAsync, newcclosure(function(self, placeId, players, teleportOptions)
+		if self ~= TeleportService then
+			error("Expected ':' not '.' calling member function TeleportAsync", 2)
+		end
+		if players == nil then
+			error("Argument 2 missing or nil", 2)
+		end
+		if typeof(players) ~= "table" then
+			error("Unable to cast value to Objects", 2)
+		end
+		error("TeleportUnknown must be called from a Server", 2)
+	end))
+	local oldNamecall; oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+		local nmc = getnamecallmethod()
+		if select(1, ...) == TeleportService and nmc == "teleport" or nmc == "Teleport" or nmc == "TeleportToPlaceInstance" or nmc == "TeleportAsync" then
+			if checkcaller() or (allow_rj and select(2, ...) == game.PlaceId) then
+				return oldNamecall(...)
+			end
+			return
+		end
+		return oldNamecall(...)
+	end))
 
 	notify('Client AntiTP','Client anti teleport is now active (only effective on localscript teleport)')
 end)
 
 addcmd('allowrejoin',{'allowrj'},function(args, speaker)
-	if args[1] and args[1] == 'false' then
-		allow_rj = false
-		notify('Client AntiTP','Allow rejoin set to false')
-	else
-		allow_rj = true
-		notify('Client AntiTP','Allow rejoin set to true')
-	end
+	allow_rj = not allow_rj
+	notify("Client AntiTP", `Scripts now may{allow_rj and "" or " not"} make you rejoin the server`)
 end)
 
 addcmd("cancelteleport", {"canceltp"}, function(args, speaker)
@@ -8781,22 +8845,25 @@ addcmd("partpath", {"partname"}, function(args, speaker)
 	selectPart()
 end)
 
+local antiAfkCon = nil
 addcmd("antiafk", {"antiidle"}, function(args, speaker)
-	if getconnections then
-		for _, connection in pairs(getconnections(speaker.Idled)) do
-			if connection["Disable"] then
-				connection["Disable"](connection)
-			elseif connection["Disconnect"] then
-				connection["Disconnect"](connection)
-			end
-		end
-	else
-		speaker.Idled:Connect(function()
-			Services.VirtualUser:CaptureController()
-			Services.VirtualUser:ClickButton2(Vector2.new())
-		end)
-	end
-	if not (args[1] and tostring(args[1]) == "nonotify") then notify("Anti Idle", "Anti idle is enabled") end
+    if getconnections then
+        for _, c in getconnections(speaker.Idled) do
+            pcall(function() c:Disable() end) -- supposed to "pause" it
+            pcall(function() c:Disconnect() end) -- supposed to disconnect it
+        end
+    end
+
+    if antiAfkCon then
+        antiAfkCon:Disconnect()
+        antiAfkCon = nil
+    end
+    antiAfkCon = speaker.Idled:Connect(function()
+        Services.VirtualUser:CaptureController()
+        Services.VirtualUser:ClickButton2(Vector2.zero)
+    end)
+
+    if not (args[1] and tostring(args[1]) == "nonotify") then notify("Anti Idle", "Anti idle is enabled") end
 end)
 
 addcmd("datalimit", {}, function(args, speaker)
@@ -10773,6 +10840,7 @@ addcmd("bang", {"rape"}, function(args, speaker)
 					getRoot(speaker.Character).CFrame = otherRoot.CFrame * bangOffet
 				end)
 			end)
+			break
 		end
 	end
 end)
