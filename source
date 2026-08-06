@@ -7053,7 +7053,7 @@ addcmd("noclip", {}, function(args, speaker)
         end
     end)
 
-    Clip = true
+    Clip = false
 
     if args[1] ~= "nonotify" then notify("Noclip", "Noclip Enabled") end
 end)
@@ -7068,7 +7068,7 @@ addcmd("unnoclip", {"clip"}, function(args, speaker)
     end
     table.clear(noclipParts)
 
-    Clip = false
+    Clip = true
 
     if args[1] ~= "nonotify" then notify("Noclip", "Noclip Disabled") end
 end)
